@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 回填产物，不入库
+*-filled.dxf
+*-filled.dwg
+
+# 本机临时参数文件
+values*.local.json
+.tmp/
