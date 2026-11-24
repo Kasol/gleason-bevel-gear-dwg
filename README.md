@@ -3,25 +3,20 @@
 把齿形参数、几何参数、技术要求回填进公司 DWG 成品模板，输出成品图纸 + 参数汇总 + 风险备注。
 不做强度校核，不做工艺编制，不画新图框。
 
-> **AI 智能体**：直接跳到 [给 AI 智能体的自助安装](#给-ai-智能体的自助安装)，按第 1–6 步执行，装完回报自检结果。
+> **AI 智能体**：读 [给 AI 智能体的接入说明](#给-ai-智能体的接入说明)，先选通道再动手。不要跳过通道选择直接复制路径。
 > **人类读者**：见 [人工使用](#人工使用)。
 
 ## 这是一个通用 skill
 
-不绑定任何单一智能体平台，形态遵循 Agent Skills 约定，可以被任何"能读文件 + 能跑命令"的宿主安装：
+本仓库不绑定任何单一智能体平台。它在技术上满足的条件是：
 
-- 入口是 `SKILL.md`（YAML frontmatter + Markdown 正文），其余是 `references/`、`scripts/`、`.template/`
-- 无安装包、无构建步骤、无服务端、无网络调用、无宿主专有配置
+- 形态遵循 Agent Skills 约定：一个目录 + `SKILL.md`（YAML frontmatter + Markdown 正文）+ 可选的 `references/`、`scripts/`、`assets/`
+- 无安装包、无构建步骤、无服务端、无网络调用、无宿主专有配置、不读写宿主注册表或全局状态
 - 目录内部一律相对路径引用，整目录移动到哪都能工作
 - 唯一运行时依赖：Python 3.9+ 与 `ezdxf`（纯 Python，Windows / Linux / macOS 同构）
-- 仓库名 = 技能名 = frontmatter `name`，因此**克隆到技能目录即完成安装**
+- 仓库名 = 技能名 = frontmatter `name`，因此把仓库整体放到宿主的技能位置即可（见下文通道 A）
 
-| 宿主 | 读取位置 |
-|---|---|
-| Claude Code / Claude Agent SDK | `~/.claude/skills/<name>/`（个人）或 `<项目>/.claude/skills/<name>/` |
-| Codex CLI | `~/.codex/skills/<name>/` |
-| DSH 及其它跨工具宿主 | `~/.agents/skills/<name>/` |
-| 无技能机制的宿主（Cursor / Cline / Copilot Chat / 自研 agent） | 降级：写进 `AGENTS.md` 等指令文件 |
+宿主如何"接入"这个目录，各平台并不统一。下节按能力而不是按平台名来描述接入方式。
 
 ## 结构
 
@@ -40,121 +35,146 @@ gleason-bevel-gear-dwg/
 
 ---
 
-## 给 AI 智能体的自助安装
+## 给 AI 智能体的接入说明
 
-> 本节是写给 AI 智能体执行的。你可能是 Claude Code、Codex CLI、Cursor、Cline、DSH 或任何其它宿主。
-> 本节**不假定宿主类型**，按下面 6 步走即可；判定不了宿主时走第 5 步的降级路径。
+> 本节写给 AI 智能体。你可能是 Claude Code、Codex CLI、Cursor、Cline、DSH、某个内部 agent 框架，也可能只是一个能读文件的一次性会话。
+> 本节**不假定宿主**：不假定你有"技能目录"，不假定这个目录叫什么，不假定你跑在 Windows 上。
 
-### 第 0 步 认清你要装的是什么
+### 目标不是"复制到某个路径"
 
-一个**纯文件目录**。安装 = 复制/克隆一个目录，卸载 = 删掉那个目录。不存在注册表、服务、全局状态。
-所以任何"安装失败"只可能是三类原因：路径不对、依赖没装、目录被套成两层。
+目标是：**当用户提出锥齿轮出图需求时，你的宿主能读到 `SKILL.md` 并按它的 6 步流程执行。**
 
-### 第 1 步 判定安装位置
+路径只是达成这个目标的一种手段，而且是所有手段里最宿主相关的一种。所以先选手段，再谈路径。
 
-从上往下匹配，命中即停：
+### 三条接入通道，按保真度从高到低
 
-| 判定依据 | 安装到 |
-|---|---|
-| 宿主是 Claude Code（有 `~/.claude` 或 `.claude/`，文档提到 skills） | `~/.claude/skills/gleason-bevel-gear-dwg/` |
-| 宿主是 Codex CLI（有 `~/.codex`） | `~/.codex/skills/gleason-bevel-gear-dwg/` |
-| 宿主读取 `~/.agents/skills`（跨工具约定，DSH 等） | `~/.agents/skills/gleason-bevel-gear-dwg/` |
-| 只为当前项目服务，且宿主支持项目级技能 | `<项目>/.claude/skills/` 或 `<项目>/.agents/skills/` 下的同名目录 |
-| 都不是 / 无法判定 | 跳到第 5 步 |
+| 通道 | 适用情况 | 你要做的事 | 保真度 |
+|---|---|---|---|
+| **A 原生技能机制** | 宿主有 skills 概念（扫目录、读清单、或插件式加载） | 把本目录放到宿主加载 skills 的位置 | 最高：可自动发现、按 `description` 触发 |
+| **B 指令文件** | 宿主启动时读项目级/用户级指令文件（`AGENTS.md`、`CLAUDE.md`、规则目录等） | 在指令文件里加一段引用，指向 `SKILL.md` 的真实路径 | 中：靠指令文字命中，不会被自动索引 |
+| **C 会话注入** | 一次性会话、无持久化目录、或 A/B 都不可用 | 直接读 `SKILL.md` 全文进上下文，按它执行 | 最低，但永远可用 |
 
-判定不了就同时装 `~/.claude/skills` 与 `~/.agents/skills`：目录是纯文本、体积几十 KB，重复安装无害。
-但**同一个宿主内不要留两份同名不同版本**，否则技能清单里会出现重复项。
+选择顺序：**能 A 就 A，不行退 B，再不行用 C。** 你选了哪条、装到哪里，必须告诉用户（见"回报"）。
 
-### 第 2 步 取代码
+### 通道 A：先找位置，别猜
+
+按顺序执行，命中即停：
+
+1. **查宿主自己的说明**（最可靠）。宿主若支持 skills，文档或配置里会写加载目录 / 注册方式。有就照它做，本文档不作数。
+2. **探测本机已有的技能目录**（不假定具体名字）：
+
+   ```bash
+   # 列出 $HOME 下三层内名为 skills / skill 的目录（任何宿主都适用）
+   find "$HOME" -maxdepth 3 -type d \( -name skills -o -name skill \) 2>/dev/null
+   ```
+
+   ```powershell
+   # PowerShell 等价
+   Get-ChildItem $HOME -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+     Get-ChildItem $_.FullName -Directory -Force -ErrorAction SilentlyContinue |
+       Where-Object { $_.Name -in @('skills','skill') }
+   } | Select-Object -ExpandProperty FullName
+   ```
+
+   判断依据：探到的目录里若已存在 `<某个名字>/SKILL.md` 形态的兄弟目录，这个目录基本就是对的。
+3. **问用户**。探测不到、或探到多个彼此矛盾时，直接问："你的智能体从哪里加载技能？"。**不要挑一个最像的硬装。**
+
+拿到位置后，把本仓库整体放成 `<SKILLS_DIR>/gleason-bevel-gear-dwg/`：
 
 ```bash
-git clone https://github.com/Kasol/gleason-bevel-gear-dwg.git
-```
-
-已经在本机（比如就在当前工作目录里）就跳过这步，直接用现有路径。
-
-### 第 3 步 放到技能目录（目录名必须保持 `gleason-bevel-gear-dwg`）
-
-克隆即安装——把目标路径直接作为 clone 目录：
-
-```bash
-# bash / zsh / Git Bash
-git clone https://github.com/Kasol/gleason-bevel-gear-dwg.git ~/.claude/skills/gleason-bevel-gear-dwg
+# 目标目录已知时；<SKILLS_DIR> 是你上一步探测或问到的真实路径，不是示例
+git clone https://github.com/Kasol/gleason-bevel-gear-dwg.git "<SKILLS_DIR>/gleason-bevel-gear-dwg"
 ```
 
 ```powershell
-# PowerShell
-$dst = Join-Path $HOME '.claude\skills\gleason-bevel-gear-dwg'
-git clone https://github.com/Kasol/gleason-bevel-gear-dwg.git $dst
+git clone https://github.com/Kasol/gleason-bevel-gear-dwg.git "$SKILLS_DIR\gleason-bevel-gear-dwg"
 ```
 
-已经有本地副本时改为复制（**复制目录本身，不要复制目录内容**）：
+已经有本地副本时改为复制**目录本身**（不是目录内容）：
 
 ```bash
-cp -r ./gleason-bevel-gear-dwg ~/.claude/skills/gleason-bevel-gear-dwg
+cp -r ./gleason-bevel-gear-dwg "<SKILLS_DIR>/gleason-bevel-gear-dwg"
 ```
 
-```powershell
-Copy-Item -Recurse -Force .\gleason-bevel-gear-dwg (Join-Path $HOME '.claude\skills\gleason-bevel-gear-dwg')
-```
+两个硬性要求：
 
-> 常见错误：装成 `skills/gleason-bevel-gear-dwg/gleason-bevel-gear-dwg/`。自检能过，但宿主扫不到 `SKILL.md`。
-> 装完必须确认目标目录下**直接**有 `SKILL.md`。
+- **目录名保持 `gleason-bevel-gear-dwg`**（与 frontmatter `name` 一致）
+- **目标目录下必须直接有 `SKILL.md`**。装成 `.../gleason-bevel-gear-dwg/gleason-bevel-gear-dwg/SKILL.md` 时自检会过，但宿主扫不到，这是最常见的失败
 
-### 第 4 步 自检（不要跳过）
+> **已知的一些实现**（仅作为第 2 步的判断线索，**不是默认值**，也不构成清单）：
+> `~/.claude/skills`、`~/.codex/skills`、`~/.agents/skills` 这几个位置在某些宿主上是技能目录。
+> 你的宿主不在这几个里，就说明它用的是别的位置——继续探测或问用户，不要为了"对上号"硬装到一个不相关的地方。
 
-```bash
-cd ~/.claude/skills/gleason-bevel-gear-dwg
-python3 _selftest_fill_dwg.py   # Windows 上用 python 或指定解释器绝对路径
-```
+### 通道 B：宿主没有技能目录时
 
-判据：
-
-- 输出 `27/27 通过`，退出码 `0` → 安装成功
-- 报 `ModuleNotFoundError: ezdxf` → 先 `pip install ezdxf` 再重跑（依赖装进解释器环境，**不要**装进技能目录）
-- 报 `找不到脚本` → 目录套了两层，回到第 3 步
-
-**自检没通过就不要告诉用户"已安装"。** 最多说"文件已放置，但自检未通过"，并附报错原文。
-
-### 第 5 步 宿主没有技能机制时（降级）
-
-把下面这段追加到宿主的指令文件——`AGENTS.md`、`CLAUDE.md`、`.github/copilot-instructions.md`、`.cursor/rules/*.mdc` 等，任选宿主实际读取的那个：
+找到宿主实际读取的指令文件——常见形态是项目根或用户目录下的 `AGENTS.md`、`CLAUDE.md`、`.github/copilot-instructions.md`、规则目录里的 Markdown（如 `.cursor/rules/*.mdc`）——把下面这段追加进去：
 
 ```markdown
 ## 可用技能：gleason-bevel-gear-dwg
 
-需要生成格里森 / 等高齿锥齿轮成品 DWG 图纸（或用户要求"按锥齿轮参数出成品图"、
-"套用 DWG 模板生成锥齿轮图纸"）时，先完整读取
-<这里写绝对路径>/SKILL.md，再严格按其 6 步串行流程执行。
-SKILL.md 中引用的 references/、scripts/、.template/ 均相对该文件所在目录解析。
-仅限锥齿轮成品图；圆柱齿轮、链轮、花键、毛坯图、工装图、工序卡不适用。
+需要生成格里森 / 等高齿锥齿轮成品 DWG 图纸时（用户说"按锥齿轮参数出成品图"、
+"套用 DWG 模板生成锥齿轮图纸"、"输入齿形参数和技术要求出图纸"等），
+先完整读取 <SKILL_DIR>/SKILL.md，再严格按其 6 步串行流程执行。
+
+SKILL.md 中引用的 references/、scripts/、.template/ 均相对该文件所在目录解析，
+不要按当前工作目录解析。本技能仅限锥齿轮成品图；圆柱齿轮、链轮、花键、
+毛坯图、工装图、工序卡不适用。
 ```
 
-`<这里写绝对路径>` 换成真实路径（如 `D:/skills/gleason-bevel-gear-dwg`），别留占位符。
+`<SKILL_DIR>` 换成技能目录的绝对路径。**写绝对路径，且写完要验证它真的能解析到 `SKILL.md`**——留占位符或写相对路径，等于没接。
 
-### 第 6 步 回报用户
+### 通道 C：什么持久化机制都没有时
 
-安装完成后按这三行回报，不要只回"装好了"：
+直接把 `SKILL.md` 全文读进上下文，然后按它执行：
 
-1. **安装位置**：实际路径（绝对路径）
-2. **自检结果**：`27/27 通过` 或报错原文
-3. **能力边界**：技能已就绪，但 `.template/` 为空、本机无 DWG 转换工具、无图纸解析 MCP —— 因此在放入真实模板前，它会按设计停在第 4 步，这是预期行为，不是 bug
+- `SKILL.md` 是唯一入口，6 步流程和硬性约束都在里面
+- 需要细节时再按其中的相对路径读 `references/*.md`
+- `references/` 不必预先全读，按需加载即可（这也是它被拆成三个文件的原因）
+- 通道 C 下每次新会话都要重新注入，所以要告诉用户这个事实
 
-### 验收标准（4 条全满足才算装好）
+### 三个通道都要做的自检
 
-1. `<目标目录>/SKILL.md` 存在，首行是 `---`
+自检脚本用**自身位置**定位被测文件，与当前工作目录无关，可从任意路径调用：
+
+```bash
+python3 "<技能目录>/_selftest_fill_dwg.py"
+```
+
+```powershell
+python "$技能目录\_selftest_fill_dwg.py"
+```
+
+判据：
+
+- 输出 `27/27 通过`、退出码 `0` → 可用
+- `ModuleNotFoundError: ezdxf` → 先 `pip install ezdxf` 再重跑。依赖装在解释器环境，**不要**装进技能目录
+- `找不到脚本` → 目录套了两层或路径写错，回到通道 A 的层级检查
+
+**自检没通过就不要告诉用户"已装好"。** 最多说"文件已放置，但自检未通过"，并附报错原文。
+
+### 回报用户（三行，缺一不可）
+
+1. **接入方式**：走的哪条通道（A/B/C），以及具体位置或指令文件路径
+2. **自检结果**：`27/27 通过`，或报错原文
+3. **能力边界**：技能已就绪 ≠ 能出图。`.template/` 为空、本机无 DWG 转换器、无图纸解析 MCP 时，它会在第 4 步停下——这是设计行为，不是安装失败
+
+### 验收标准（4 条全满足才算接好）
+
+1. 宿主确实能读到 `SKILL.md`（A：技能目录顶层就是它；B：指令文件里的路径能解析到真实文件；C：已读入上下文）
 2. 6 个技能文件齐全：`SKILL.md`、`references/{params,tech-requirements,template-and-output}.md`、`scripts/fill_dwg.py`、`.template/README.md`
-3. `_selftest_fill_dwg.py` 跑出 `27/27`
-4. 新开一个会话后，宿主能在技能清单里列出 `gleason-bevel-gear-dwg`（宿主若无"技能清单"概念，跳过此条）
+3. 自检跑出 `27/27`
+4. 用一句真实需求试一次（如"按这些参数出一张格里森锥齿轮成品图"），确认能进入 `SKILL.md` 第 1 步。进不去就说明通道选错或路径写错，回去重选
 
 ### 不要做的事
 
+- **不要照抄本文里的示例路径**。`~/.claude/skills` 之类只是举例，正确路径必须来自探测或用户告知
+- **不要用未替换的 `<SKILLS_DIR>` / `<SKILL_DIR>` 占位符执行命令**，那样只会装到一个叫这个名字的垃圾目录
 - 不要为了"适配宿主"去改 `SKILL.md` / `references/` 的内容（要适配就在宿主侧加包装，技能本身保持中立）
-- 不要删除或替换 `.template/` 里的文件
-- 不要把本仓库装成宿主安装目录的子目录（如 `node_modules/`、`site-packages/`）
+- 不要删除或替换 `.template/` 里的文件（`.template/README.md` 还承担着让 git 保留这个目录的作用，删了克隆下来目录就不存在）
+- 不要把本仓库装进宿主自己的安装目录（`node_modules/`、`site-packages/` 等）
 - 不要跳过自检，也不要在自检失败时声称安装完成
 - 不要在没有真实模板时承诺"能出图"——技能第 4 步会直接停止
-- 不要假定 Windows：脚本用 `pathlib`，Linux / macOS 同样可跑
+- 不要假定 Windows：脚本用 `pathlib`，Linux / macOS 同样可跑；本文命令给了 bash 与 PowerShell 两版
 
 ### 环境依赖
 
