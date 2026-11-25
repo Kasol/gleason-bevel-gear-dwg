@@ -3,7 +3,7 @@ name: gleason-bevel-gear-dwg
 description: 处理齿轮工程中的二维成品图、控制计划表和装配体分析需求。适用于提供草图或齿轮参数后获取成品 PDF、根据成品图及工艺路线获取控制计划 Excel，以及 STEP 模型展示、指定节点干涉检查和非标件工程图。首期面向齿轮业务，通过模板和业务规则扩展。
 license: MIT
 metadata:
-  version: "2.1.1"
+  version: "2.2.0"
   owner: 新天齿轮工艺设计组
 ---
 
@@ -11,13 +11,13 @@ metadata:
 
 面向内部智能体的三个业务 Tool：二维成品图生成、控制计划表生成、装配体分析。业务处理与接入层分离，未来可通过 HTTP MCP 接入。保留现有技能标识，避免改变引用路径。
 
-开始处理前读取 [执行约定](references/execution.md)，再按本次业务需要加载参考。对话围绕收到的资料、必要补充项、检查结论和交付文件展开。
+开始处理前读取 [交付规则](references/execution.md)。必要输入齐全后，在当前回复中给出检查摘要和文件链接，不再询问是否继续或是否交付。
 
 ## 路由与共用约定
 
-- 二维成品图：需要字段或比对依据时读 [params.md](references/params.md)、[tech-requirements.md](references/tech-requirements.md)；生成细节见 [template-and-output.md](references/template-and-output.md)。
-- 控制计划：字段与工序对应见 [control-plan.md](references/control-plan.md)。
-- 装配展示、干涉、非标件出图：见 [assembly.md](references/assembly.md)。仅按执行约定加载本次需要的部分。
+- 二维成品图：需要字段或比对依据时读 [params.md](references/params.md)、[tech-requirements.md](references/tech-requirements.md)。
+- 控制计划：需要字段与工序对应依据时读 [control-plan.md](references/control-plan.md)。
+- 后端处理资料由交付规则按需加载，不预先加载生成服务、架构或装配计算的全部文档。
 - 先确定本次操作，再按执行约定检查所需资料；缺失时列出具体补充项，不伪造读取、计算或服务调用结果。
 - 首期以齿轮业务验收，既有格里森／等高齿字段作为起点；支持范围由业务规则、模板和处理后端决定，不把旧字段表硬编码成所有零件的通用限制。
 - 保留数据来源、单位、公差、特性标记和版本。用户明确提供的字段优先于识别结果，差异留痕，不静默改值。发现冲突后的交付或补充处理以执行约定为准，不自行增加确认门槛。
@@ -37,7 +37,7 @@ metadata:
 
 交付目标是整合几何、齿形和技术要求的脱敏成品 PDF，保留制造信息；内部 CAD 文件不替代 PDF。
 
-不自行推导缺失齿形设计参数，不做强度校核。工程图生成不能仅修改尺寸文字却保留不匹配的几何形状。
+不自行推导缺失齿形设计参数，不做强度校核。
 
 ## Tool 2 控制计划表生成
 
@@ -56,7 +56,7 @@ metadata:
 - 非标件可由模型已有标记或调用方节点清单选择；保留选择来源和稳定节点标识。缺少标记时不要声称自动识别出非标件。
 - 基于工程图模板，对选定零件生成投影视图、按需剖视和基础尺寸草稿；不从普通 STEP 几何猜测设计公差、粗糙度或工艺要求。
 
-原始 CAD 几何用于可靠的实体分析，三角网格用于展示；仅完成三角化或包围盒相交不能证明实体干涉。详细约定见 [assembly.md](references/assembly.md)。
+仅完成三角化或包围盒相交不能证明实体干涉。计算资料按交付规则加载。
 
 ## 结果与能力报告
 
