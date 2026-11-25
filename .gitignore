@@ -9,3 +9,6 @@ __pycache__/
 # 本机临时参数文件
 values*.local.json
 .tmp/
+
+# 本次任务的最终交付副本
+outputs/

@@ -6,11 +6,13 @@
 
 ## 文件交付
 
-命中后先读 [交付规则](references/execution.md)。收集必要资料，进行可完成的参数检查、信息比对及口径核对，然后在当前回复交付 `.result/` 对应文件。**检查失败、数据不一致或解析能力不足不阻断交付；仅明确缺少约定输入时追问，不再询问是否继续。**
+命中后先读 [交付规则](references/execution.md) 和 [任务文件管理](references/task-files.md)。业务未明确时主动提供“二维成品图／控制计划表／装配体分析”选项；已有明确需求则直接进入相应流程。收集必要资料，进行可完成的检查，再从 `.result/` 复制为本次新交付文件。**检查失败、数据不一致或解析能力不足不阻断交付；仅明确缺少约定输入时追问，不再询问是否继续。**
 
 只有用户明确要求调用实际工具或服务时，才加载 [服务执行说明](references/service-execution.md)，按工程规则执行生成和分析。检查结论与调用情况据实报告。
 
-交付文件为 `.result/finished-drawings/result.pdf` 和 `.result/control-plans/result.xlsx`。装配展示、干涉关系及非标件图纸尚未配置交付文件，可先收集资料，不捏造结果。
+交付源为 `.result/finished-drawings/result.pdf` 和 `.result/control-plans/result.xlsx`，源文件保持不变。优先采用宿主输出位置，否则复制到工作区 `outputs/<本次唯一标识>/`，只链接新建的最终 PDF／XLSX，不覆盖历史文件。装配相关交付源尚未配置，不捏造结果。
+
+宿主需要临时脚本或转换文件时，允许创建并记录到本次独立临时目录。完成、失败或取消时，按创建记录只清理本次临时产物，保留最终交付文件及所有原有资料；不清空共享临时目录。不额外交付脚本、提取数据、预览图或报告。
 
 ## 三个 Tool 的业务边界
 
@@ -51,6 +53,7 @@ gleason-bevel-gear-dwg/
 ├── references/
 │   ├── architecture.md            # 目标架构、能力现状、待定项及验收
 │   ├── execution.md               # 必要输入、检查及当轮文件交付
+│   ├── task-files.md              # 新建交付文件及本次临时文件清理
 │   ├── service-execution.md       # 明确要求服务调用时才加载
 │   ├── params.md                  # 齿轮字段、尺寸结构、来源及校验边界
 │   ├── tech-requirements.md       # 技术要求与特性标记
@@ -59,7 +62,7 @@ gleason-bevel-gear-dwg/
 │   └── assembly.md                # 装配节点、干涉及非标件出图
 ├── scripts/fill_dwg.py             # 现有 DXF 文字回填辅助脚本
 ├── .template/                     # finished-drawings/、control-plans/ 模板
-├── .result/                       # 成品 PDF 和控制计划 XLSX
+├── .result/                       # 成品 PDF 和控制计划 XLSX 的交付源
 └── _selftest_fill_dwg.py           # 回填脚本自检
 ```
 
@@ -93,7 +96,7 @@ python _selftest_fill_dwg.py
 
 从 GitHub 安装时克隆整个仓库，保留 `.template/`、`.result/` 和 `references/`；只下载 `SKILL.md` 无法交付结果。技能根目录下应直接包含 `SKILL.md`，不要额外嵌套一层同名目录。
 
-用户要求安装或接入时，核实入口及参考文件能解析、两份 `.result` 文件存在且可读取，并报告接入位置及检查结果。验证前两个文件交付流程无需安装 Python、ezdxf、CAD 或 MCP 服务，不以回填脚本自检作为安装阻断条件。需要运行 DXF 回填脚本时再检查其依赖及自检；调用后端按服务执行说明验证。仅阅读或修改本仓库不等于安装，不自动复制到全局技能目录。
+用户要求安装或接入时，核实入口及参考文件能解析、两份 `.result` 文件可读取、宿主有可写的交付位置，并报告接入位置及检查结果。验证前两个文件交付流程无需安装 Python、ezdxf、CAD 或 MCP 服务，不以回填脚本自检作为安装阻断条件。需要运行 DXF 回填脚本时再检查其依赖及自检；调用后端按服务执行说明验证。仅阅读或修改本仓库不等于安装，不自动复制到全局技能目录。
 
 未来 HTTP MCP 是调用这些业务能力的另一层接入方式。当前没有已发布的三个 Tool API；后续接入服务也不改变普通请求的文件交付顺序。
 
