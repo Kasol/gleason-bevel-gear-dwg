@@ -6,11 +6,11 @@
 
 ## 开发文档
 
-- [成品图模板、DXF 回填与输出](template-and-output.md)
+- [成品图模板与输出](template-and-output.md)
 - [控制计划真实生成设计](control-plan.md)
 - [STEP、实体检查与非标件出图](assembly.md)
 - [总体目标架构及后续验收](../development/architecture.md)
-- [模板设计与辅助脚本](../development/templates.md)
+- [模板设计](../development/templates.md)
 
 ## 实现时的共同要求
 

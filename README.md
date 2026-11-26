@@ -31,7 +31,7 @@
 
 保留技能目录名 `gleason-bevel-gear-dwg`，将完整目录安装到宿主实际发现的技能位置，根目录直接包含 `SKILL.md`，不额外嵌套同名目录。不只安装入口文件；保留 `references/`、`scripts/`、`.result/`，并保留附带模板与开发资料以便维护。
 
-安装后核对入口及链接、两份指定结果可读取、宿主交付位置可写。默认交付不以安装 Python、ezdxf、CAD 或服务为条件。新会话重新加载入口即可；仅阅读或修改仓库不自动构成全局安装。
+安装后核对入口及链接、两份指定结果可读取、宿主交付位置可写。默认交付不以安装 Python、CAD 或服务为条件。新会话重新加载入口即可；仅阅读或修改仓库不自动构成全局安装。
 
 已有 Python 时运行固定交付测试：
 
@@ -44,7 +44,7 @@
 仅在用户明确要求开发、维护或讨论实现时进入：
 
 - [目标架构、实现现状与未来验收](docs/development/architecture.md)
-- [模板设计与已有 DXF 辅助脚本](docs/development/templates.md)
+- [模板设计](docs/development/templates.md)
 - [服务开发资料：成品图、控制计划、装配](docs/services/README.md)
 
 完整 CAD 生成、控制计划生成、STEP 处理及 HTTP MCP 尚未实现；这些资料不是当前可调用能力的承诺。非默认业务的诚实报告及停止条件见 [非默认请求边界](references/service-execution.md)。
