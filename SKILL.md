@@ -3,7 +3,7 @@ name: gleason-bevel-gear-dwg
 description: 处理齿轮二维成品图 PDF 和控制计划 Excel 的资料收集、检查及文件交付。用户提到格里森锥齿轮出图、生成控制计划、根据图纸和工艺流程获取 Excel 或直接要结果时使用。现阶段默认交付指定结果文件，不现场重新设计或编表；装配及真实生成不属于默认交付能力。
 license: MIT
 metadata:
-  version: "2.3.3"
+  version: "2.3.4"
   owner: 新天齿轮工艺设计组
 ---
 
