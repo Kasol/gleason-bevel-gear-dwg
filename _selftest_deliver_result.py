@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""固定交付自检：只在独立临时目录生成测试副本，不改动内置结果文件。"""
+"""云端文件交付自检；默认离线，--online 额外下载五份实际资源。
+
+所有测试产物只写入本次独立临时目录，结束后自动清理。
+"""
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import importlib.util
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+from http.client import IncompleteRead
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent
@@ -17,6 +26,9 @@ SCRIPT = ROOT / "scripts" / "deliver_result.py"
 spec = importlib.util.spec_from_file_location("deliver_result", SCRIPT)
 delivery = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(delivery)
+ONLINE = "--online" in sys.argv
+if ONLINE:
+    sys.argv.remove("--online")
 
 
 class DeliveryTests(unittest.TestCase):
@@ -26,28 +38,49 @@ class DeliveryTests(unittest.TestCase):
         self.base = Path(self.temp.name)
         self.skill = self.base / "skill"
         self.outputs = self.base / "outputs"
-        for kind, (relative, _) in delivery.RESULTS.items():
-            source = self.skill / relative
-            source.parent.mkdir(parents=True, exist_ok=True)
-            source.write_bytes((kind + "\n测试原始内容\n").encode("utf-8"))
-        self.root_patch = patch.object(delivery, "SKILL_ROOT", self.skill)
-        self.root_patch.start()
-        self.addCleanup(self.root_patch.stop)
+        self.bodies = {}
+        manifests = {}
+        for kind, relative in delivery.RESULTS.items():
+            filename = delivery.resource_for(kind)["filename"]
+            body = (kind + "\n测试原始内容\n").encode("utf-8")
+            url = "https://assets.example.test/" + kind
+            self.bodies[url] = body
+            data = manifests.setdefault(relative, {"schema_version": 1, "files": {}})
+            data["files"][kind] = {
+                "url": url, "filename": filename, "size_bytes": len(body),
+                "sha256": hashlib.sha256(body).hexdigest(),
+            }
+        for relative, data in manifests.items():
+            manifest = self.skill / relative
+            manifest.parent.mkdir(parents=True, exist_ok=True)
+            manifest.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        root_patch = patch.object(delivery, "SKILL_ROOT", self.skill)
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
+        remote_patch = patch.object(delivery, "open_remote", side_effect=lambda url: io.BytesIO(self.bodies[url]))
+        self.remote = remote_patch.start()
+        self.addCleanup(remote_patch.stop)
 
-    def test_both_kinds_are_byte_identical(self):
-        for kind, (relative, filename) in delivery.RESULTS.items():
+    def change_resource(self, **changes):
+        manifest = self.skill / delivery.RESULTS["control-plan"]
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        data["files"]["control-plan"].update(changes)
+        manifest.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    def test_all_five_kinds_are_byte_identical(self):
+        for kind in delivery.RESULTS:
             with self.subTest(kind=kind):
-                source = self.skill / relative
-                original = source.read_bytes()
+                resource = delivery.resource_for(kind)
                 result = delivery.deliver_result(kind, self.outputs)
                 target = Path(result["output"])
-                self.assertEqual(target.name, filename)
-                self.assertEqual(target.read_bytes(), original)
-                self.assertEqual(source.read_bytes(), original)
-                self.assertEqual(result["sha256"], delivery.sha256(source))
+                self.assertEqual(target.name, resource["filename"])
+                self.assertEqual(target.read_bytes(), self.bodies[resource["url"]])
+                self.assertEqual(result["sha256"], resource["sha256"])
                 self.assertTrue(result["verified"])
                 self.assertEqual(result["status"], "success")
                 self.assertEqual(list(target.parent.iterdir()), [target])
+        self.assertEqual(list(self.skill.rglob("*.pdf")), [])
+        self.assertEqual(list(self.skill.rglob("*.xlsx")), [])
 
     def test_repeated_delivery_never_overwrites(self):
         first = delivery.deliver_result("control-plan", self.outputs)
@@ -64,33 +97,55 @@ class DeliveryTests(unittest.TestCase):
         delivery.deliver_result("control-plan", self.outputs)
         self.assertEqual(existing.read_bytes(), b"user document")
 
-    def test_verify_is_read_only(self):
+    def test_verify_is_read_only_and_offline(self):
         result = delivery.deliver_result("control-plan", self.outputs)
         path = Path(result["output"])
         before = path.stat().st_mtime_ns
+        self.remote.reset_mock()
         checked = delivery.verify_result("control-plan", path)
         self.assertEqual(result, checked)
         self.assertEqual(path.stat().st_mtime_ns, before)
+        self.remote.assert_not_called()
 
     def test_modified_file_is_rejected_without_deletion(self):
         result = delivery.deliver_result("control-plan", self.outputs)
         path = Path(result["output"])
-        path.write_bytes(b"changed workbook")
+        modified = b"X" * path.stat().st_size
+        path.write_bytes(modified)
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             delivery.verify_result("control-plan", path)
-        self.assertEqual(path.read_bytes(), b"changed workbook")
+        self.assertEqual(path.read_bytes(), modified)
 
-    def test_missing_source_does_not_create_output(self):
-        source = delivery.source_for("control-plan")
-        source.unlink()
+    def test_missing_manifest_does_not_create_output(self):
+        (self.skill / delivery.RESULTS["control-plan"]).unlink()
         with self.assertRaises(ValueError):
             delivery.deliver_result("control-plan", self.outputs)
         self.assertFalse(self.outputs.exists())
+        self.remote.assert_not_called()
 
-    def test_empty_source_is_rejected(self):
-        source = delivery.source_for("control-plan")
-        source.write_bytes(b"")
-        with self.assertRaisesRegex(ValueError, "为空"):
+    def test_invalid_resource_cannot_download(self):
+        for change in [
+            {"filename": "../outside.pdf"}, {"filename": "..\\outside.pdf"},
+            {"filename": "C:outside.pdf"}, {"url": "file:///secret.pdf"},
+            {"url": "http://assets.example.test/file.pdf"},
+            {"url": "https://user:secret@assets.example.test/file.pdf"},
+            {"size_bytes": 0}, {"sha256": "invalid"},
+        ]:
+            with self.subTest(change=change):
+                manifest = self.skill / delivery.RESULTS["control-plan"]
+                original = manifest.read_bytes()
+                try:
+                    self.change_resource(**change)
+                    with self.assertRaises(ValueError):
+                        delivery.deliver_result("control-plan", self.outputs)
+                    self.assertFalse(self.outputs.exists())
+                    self.remote.assert_not_called()
+                finally:
+                    manifest.write_bytes(original)
+
+    def test_invalid_json_is_rejected(self):
+        (self.skill / delivery.RESULTS["control-plan"]).write_text("{broken", encoding="utf-8")
+        with self.assertRaises(ValueError):
             delivery.deliver_result("control-plan", self.outputs)
         self.assertFalse(self.outputs.exists())
 
@@ -99,9 +154,12 @@ class DeliveryTests(unittest.TestCase):
             delivery.deliver_result("control-plan", self.skill / "outputs")
         self.assertFalse((self.skill / "outputs").exists())
 
-    def test_source_cannot_be_used_as_deliverable(self):
+    def test_file_inside_skill_cannot_be_used_as_deliverable(self):
+        resource = delivery.resource_for("control-plan")
+        path = self.skill / "source.xlsx"
+        path.write_bytes(self.bodies[resource["url"]])
         with self.assertRaisesRegex(ValueError, "技能目录"):
-            delivery.verify_result("control-plan", delivery.source_for("control-plan"))
+            delivery.verify_result("control-plan", path)
 
     def test_missing_output_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -113,7 +171,41 @@ class DeliveryTests(unittest.TestCase):
             delivery.deliver_result("control-plan", self.outputs)
         self.assertEqual(self.outputs.read_bytes(), b"existing file")
 
-    def test_failed_verification_removes_only_new_copy(self):
+    def test_bad_downloads_remove_only_new_files(self):
+        resource = delivery.resource_for("control-plan")
+        original = self.bodies[resource["url"]]
+        self.outputs.mkdir()
+        keep = self.outputs / "keep.txt"
+        keep.write_bytes(b"keep")
+        for body in [b"", original[:-1], original + b"extra", b"X" * len(original)]:
+            with self.subTest(size=len(body)):
+                self.bodies[resource["url"]] = body
+                with self.assertRaises(ValueError):
+                    delivery.deliver_result("control-plan", self.outputs)
+                self.assertEqual(list(self.outputs.iterdir()), [keep])
+                self.assertEqual(keep.read_bytes(), b"keep")
+
+    def test_network_errors_remove_task_directory(self):
+        for error in [URLError("unavailable"), TimeoutError("timeout"),
+                      HTTPError("https://example.test/missing", 404, "missing", {}, None)]:
+            with self.subTest(error=type(error).__name__):
+                self.remote.side_effect = error
+                with self.assertRaises(OSError):
+                    delivery.deliver_result("control-plan", self.outputs)
+                self.assertEqual(list(self.outputs.iterdir()), [])
+
+    def test_interrupted_stream_removes_partial_file(self):
+        for error in [IncompleteRead(b"partial", 10), KeyboardInterrupt()]:
+            with self.subTest(error=type(error).__name__):
+                stream = io.BytesIO(b"partial")
+                with patch.object(stream, "read", side_effect=[b"partial", error]):
+                    self.remote.side_effect = None
+                    self.remote.return_value = stream
+                    with self.assertRaises(type(error)):
+                        delivery.deliver_result("control-plan", self.outputs)
+                self.assertEqual(list(self.outputs.iterdir()), [])
+
+    def test_failed_verification_removes_only_new_file(self):
         self.outputs.mkdir()
         keep = self.outputs / "keep.txt"
         keep.write_bytes(b"keep")
@@ -121,52 +213,40 @@ class DeliveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "test mismatch"):
                 delivery.deliver_result("control-plan", self.outputs)
         self.assertEqual(list(self.outputs.iterdir()), [keep])
-        self.assertEqual(keep.read_bytes(), b"keep")
 
-    def test_changing_source_does_not_report_success(self):
-        original_sha = delivery.sha256
-        source = delivery.source_for("control-plan")
-        calls = []
+    def test_streams_multiple_chunks(self):
+        with patch.object(delivery, "CHUNK_SIZE", 7):
+            result = delivery.deliver_result("control-plan", self.outputs)
+        resource = delivery.resource_for("control-plan")
+        self.assertEqual(Path(result["output"]).read_bytes(), self.bodies[resource["url"]])
 
-        def changing_sha(path):
-            if path == source:
-                calls.append(path)
-                if len(calls) >= 2:
-                    return "0" * 64
-            return original_sha(path)
+    def test_https_redirect_cannot_downgrade(self):
+        with self.assertRaisesRegex(ValueError, "HTTPS"):
+            delivery.HTTPSRedirectHandler().redirect_request(
+                Request("https://example.test/a"), None, 302, "Found", {}, "http://example.test/b")
 
-        with patch.object(delivery, "sha256", side_effect=changing_sha):
-            with self.assertRaisesRegex(ValueError, "SHA-256"):
-                delivery.deliver_result("control-plan", self.outputs)
-        self.assertEqual(list(self.outputs.iterdir()), [])
+    def test_cli_delivery_success_and_network_failure(self):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = delivery.main(["--kind", "control-plan", "--output-root", str(self.outputs)])
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertTrue(json.loads(stdout.getvalue())["verified"])
+        stdout, stderr = io.StringIO(), io.StringIO()
+        self.remote.side_effect = URLError("unavailable")
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = delivery.main(["--kind", "control-plan", "--output-root", str(self.outputs)])
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertFalse(json.loads(stderr.getvalue())["verified"])
 
 
 class InstalledFilesTests(unittest.TestCase):
-    def test_installed_pdf_and_xlsx_via_cli(self):
-        with tempfile.TemporaryDirectory(prefix="gear-delivery-cli-") as temp:
-            for kind, (relative, filename) in delivery.RESULTS.items():
-                with self.subTest(kind=kind):
-                    source = ROOT / relative
-                    source_hash = delivery.sha256(source)
-                    result = subprocess.run(
-                        [sys.executable, "-I", "-B", str(SCRIPT), "--kind", kind,
-                         "--output-root", str(Path(temp) / "交付目录")],
-                        capture_output=True, text=True, encoding="utf-8", check=False,
-                    )
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    data = json.loads(result.stdout)
-                    output = Path(data["output"])
-                    self.assertEqual(output.name, filename)
-                    self.assertEqual(data["sha256"], source_hash)
-                    self.assertEqual(delivery.sha256(output), source_hash)
-                    checked = subprocess.run(
-                        [sys.executable, "-I", "-B", str(SCRIPT), "--kind", kind,
-                         "--verify", str(output)],
-                        capture_output=True, text=True, encoding="utf-8", check=False,
-                    )
-                    self.assertEqual(checked.returncode, 0, checked.stderr)
-                    self.assertTrue(json.loads(checked.stdout)["verified"])
-                    self.assertEqual(delivery.sha256(source), source_hash)
+    def test_all_manifests_are_valid_and_contain_exact_kinds(self):
+        for relative in set(delivery.RESULTS.values()):
+            data = json.loads((ROOT / relative).read_text(encoding="utf-8"))
+            self.assertEqual(set(data["files"]), {kind for kind, path in delivery.RESULTS.items() if path == relative})
+        for kind in delivery.RESULTS:
+            self.assertTrue(delivery.resource_for(kind)["url"].startswith("https://"))
 
     def test_invalid_kind_is_rejected(self):
         with tempfile.TemporaryDirectory(prefix="gear-delivery-invalid-") as temp:
@@ -190,6 +270,32 @@ class InstalledFilesTests(unittest.TestCase):
             data = json.loads(result.stderr)
             self.assertEqual(data["status"], "error")
             self.assertFalse(data["verified"])
+
+    @unittest.skipUnless(ONLINE, "使用 --online 执行实际云端下载测试")
+    def test_five_cloud_resources_via_cli(self):
+        with tempfile.TemporaryDirectory(prefix="gear-delivery-online-") as temp:
+            for kind in delivery.RESULTS:
+                with self.subTest(kind=kind):
+                    resource = delivery.resource_for(kind)
+                    result = subprocess.run(
+                        [sys.executable, "-I", "-B", str(SCRIPT), "--kind", kind,
+                         "--output-root", str(Path(temp) / "交付目录")],
+                        capture_output=True, text=True, encoding="utf-8", check=False, timeout=60,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    data = json.loads(result.stdout)
+                    output = Path(data["output"])
+                    self.assertEqual(output.name, resource["filename"])
+                    self.assertEqual(delivery.sha256(output), resource["sha256"])
+                    self.assertEqual(output.stat().st_size, resource["size_bytes"])
+                    checked = subprocess.run(
+                        [sys.executable, "-I", "-B", str(SCRIPT), "--kind", kind,
+                         "--verify", str(output)],
+                        capture_output=True, text=True, encoding="utf-8", check=False,
+                    )
+                    self.assertEqual(checked.returncode, 0, checked.stderr)
+                    self.assertTrue(json.loads(checked.stdout)["verified"])
+                    self.assertEqual(list(output.parent.iterdir()), [output])
 
 
 if __name__ == "__main__":

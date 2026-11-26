@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "files": {
+    "custom-part1": {
+      "url": "https://kasol-store-1251959208.cos.ap-shanghai.myqcloud.com/custom-part1.pdf",
+      "filename": "非标件1.pdf",
+      "size_bytes": 262838,
+      "sha256": "1b2117d81a806099d2b113366016755af314c17bf59de5da71795967caa47113"
+    },
+    "custom-part2": {
+      "url": "https://kasol-store-1251959208.cos.ap-shanghai.myqcloud.com/custom-part2.pdf",
+      "filename": "非标件2.pdf",
+      "size_bytes": 153979,
+      "sha256": "8b17b695fad78dd3855f7f4a3eacf8d5de802cf8fe4d1499a76538dab7deeb60"
+    },
+    "custom-part3": {
+      "url": "https://kasol-store-1251959208.cos.ap-shanghai.myqcloud.com/custom-part3.pdf",
+      "filename": "非标件3.pdf",
+      "size_bytes": 159310,
+      "sha256": "964da39443e898aa1bca29786d87411a23e226923b68701496fd5e771aa12ac2"
+    }
+  }
+}

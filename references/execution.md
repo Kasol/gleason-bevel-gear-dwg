@@ -20,12 +20,12 @@
 
 ## 3. 原样交付
 
-| `kind` | 唯一指定源（相对技能根目录） | 最终文件名 |
+| `kind` | 资源配置（相对技能根目录） | 最终文件名 |
 |---|---|---|
-| `finished-drawing` | `.result/finished-drawings/result.pdf` | `二维成品图.pdf` |
-| `control-plan` | `.result/control-plans/result.xlsx` | `控制计划.xlsx` |
+| `finished-drawing` | `.result/finished-drawings/resources.json` | `二维成品图.pdf` |
+| `control-plan` | `.result/control-plans/resources.json` | `控制计划.xlsx` |
 
-输入齐全后，在宿主交付根目录（默认工作区 `outputs/`）下新建唯一任务目录，二进制复制指定源，不覆盖、不另存、不增删工作表或修改公式、元数据、格式和打印设置。不能用用户原图、模板或其他样例替代。
+输入齐全后，读取相应 JSON 的 `files[kind]`，从其 `url` 下载到宿主交付根目录（默认工作区 `outputs/`）下新建的唯一任务目录，按 `filename` 保存。不覆盖、不另存、不增删工作表或修改公式、元数据、格式和打印设置。不能用用户原图、模板或其他样例替代；不往技能目录下载或写缓存。网络访问限于配置指定的资源及必要的 HTTPS 重定向。
 
 使用已有工具完成，不安装 Python、Excel、CAD 或其他依赖：
 
@@ -36,11 +36,13 @@
   ```
 
   成品图改用 `finished-drawing`。脚本自动创建唯一目录，退出码 0 且 JSON 中 `status=success`、`verified=true` 才成功；记录 `output` 为最终文件。脚本自行定位技能根目录，不需要额外传参。
-- 没有 Python 时，直接使用宿主原生文件复制和 SHA-256 能力，例如 Windows PowerShell 的二进制复制与 `Get-FileHash`，或 Linux／macOS 的 `cp` 与 `sha256sum`／`shasum -a 256`。同样先建唯一目录、防覆盖、复制后比较源和目标摘要；不能因缺 Python 转去重建文档。
+- 没有 Python 时，使用宿主原生 HTTPS 下载和 SHA-256 能力，例如 Windows PowerShell 的 `Invoke-WebRequest` 与 `Get-FileHash`，或 Linux／macOS 的 `curl` 与 `sha256sum`／`shasum -a 256`。HTTP 错误视为失败，禁止重定向到非 HTTPS 地址。同样先建唯一目录并确认目标不存在，下载后将实际字节数及摘要与 JSON 的 `size_bytes`、`sha256` 比较；失败或取消时只清理本次半成品。不能因缺 Python 转去重建文档。
 
-**源文件与交付文件 SHA-256 一致，是默认交付成功条件。** 后续查看工具不得回写；需要复核时用原生摘要比较，或固定脚本的 `--kind control-plan --verify "<最终文件>"`。结构、美观、公式或工序覆盖检查不能替代此条件。
+**交付文件大小及 SHA-256 与资源配置一致，是默认交付成功条件。** 后续查看工具不得回写；需要复核时用原生摘要比较，或固定脚本的 `--kind control-plan --verify "<最终文件>"`（无需联网）。结构、美观、公式或工序覆盖检查不能替代此条件。下载或核验失败不更换来源、不自动更新配置里的摘要，不直接将云端 URL 当成本次新文件链接。
 
-源文件缺失、复制失败、最终文件不可读或内容核验失败属于交付失败。仅简述交付未完成及直接原因，不报告成功、不链接源文件冒充新交付，也不追加无关参数异常或建议。
+资源配置缺失、云端资源不可访问、下载失败、最终文件不可读或内容核验失败属于交付失败。仅简述交付未完成及直接原因，不报告成功、不链接云端源文件冒充新交付，也不追加无关参数异常或建议。
+
+装配阶段的三个非标件 PDF 已在 `.result/mate/resources.json` 配置。用户明确索取指定非标件结果文件时，可分别使用 `--kind custom-part1`、`custom-part2`、`custom-part3`，遵守相同交付和清理规则；不得将取得这三个 PDF 表述为已完成装配分析或实际出图。STEP、干涉分析及实际生成仍按 [非默认请求边界](service-execution.md) 处理。
 
 ## 4. 回复与收尾
 

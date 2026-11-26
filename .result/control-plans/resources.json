@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "files": {
+    "control-plan": {
+      "url": "https://kasol-store-1251959208.cos.ap-shanghai.myqcloud.com/control-plan.xlsx",
+      "filename": "控制计划.xlsx",
+      "size_bytes": 29914,
+      "sha256": "696b7556fe594a6de5f8cfb482298d94504090a299ecc22abefbd4f6f622c339"
+    }
+  }
+}

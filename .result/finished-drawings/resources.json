@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "files": {
+    "finished-drawing": {
+      "url": "https://kasol-store-1251959208.cos.ap-shanghai.myqcloud.com/engine-drawing.pdf",
+      "filename": "二维成品图.pdf",
+      "size_bytes": 262441,
+      "sha256": "e28aabc300cb209379c7eb30eaf10c07e28da12c5b3e8bec40ecdf5063c4c842"
+    }
+  }
+}

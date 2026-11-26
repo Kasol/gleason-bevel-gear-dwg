@@ -12,3 +12,8 @@ values*.local.json
 
 # 本次任务的最终交付副本
 outputs/
+
+# 结果资产通过云端配置获取，不随技能分发二进制文件
+.result/**/*.pdf
+.result/**/*.xls
+.result/**/*.xlsx
